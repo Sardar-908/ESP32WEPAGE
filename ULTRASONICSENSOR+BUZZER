@@ -1,0 +1,153 @@
+#include <WiFi.h> 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// WiFi credentials
+const char* ssid = "sardar";
+const char* password = "12345678";
+
+WiFiServer server(80);
+
+// Pins
+#define BUZZER_PIN 12
+#define TRIG_PIN 39
+#define ECHO_PIN 36
+
+// OLED setup
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+long distance = 0;
+int distanceCount = 1;  // Counter for each detected distance
+
+// Heart icon
+void drawHeartIcon(int x, int y) {
+  display.fillCircle(x, y, 2, SSD1306_WHITE);
+  display.fillCircle(x + 4, y, 2, SSD1306_WHITE);
+  display.fillTriangle(x - 1, y + 1, x + 2, y + 6, x + 5, y + 1, SSD1306_WHITE);
+}
+
+// Distance calculation
+long getDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  long dist = duration * 0.034 / 2;
+  return dist;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Pins
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // OLED init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found");
+    while (true);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("MADE BY VEGA");
+  drawHeartIcon(100, 0);
+  display.setCursor(0, 16);
+  display.println("Starting...");
+  display.display();
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to WiFi");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+  server.begin();
+}
+
+void loop() {
+  // Measure distance
+  distance = getDistanceCM();
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Control buzzer: If distance is below 35 cm, beep for 750ms
+  if (distance > 0 && distance < 35) {
+    tone(BUZZER_PIN, 1000);  // Ring buzzer at 1kHz
+    delay(750);  // Beep for 750ms
+    noTone(BUZZER_PIN);  // Turn off buzzer
+  }
+
+  // Update OLED display
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("MADE BY VEGA");
+  drawHeartIcon(100, 0);
+
+  // Display the detected distance count
+  display.setCursor(0, 16);
+  display.print("Distance ");
+  display.print(distanceCount);
+  display.print(": ");
+  display.print(distance);
+  display.println(" cm");
+
+  // Increment distance count for the next reading
+  distanceCount++;
+
+  display.setCursor(0, 32);
+  display.print("BUZZER: ");
+  display.println("ON");  // Since we beeped, we show "ON"
+  display.display();
+
+  // Handle web clients
+  WiFiClient client = server.available();
+  if (client) {
+    String req = client.readStringUntil('\r');
+    client.flush();
+    Serial.println("Client connected");
+
+    // Build HTML page with only live data (no buttons)
+    String html = "<!DOCTYPE html><html><head>";
+    html += "<meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+    html += "<meta http-equiv='refresh' content='2'>"; // Refresh every 2 seconds
+    html += "<title>Status</title>";
+    html += "<script src='https://cdn.tailwindcss.com'></script></head>";
+    html += "<body class='bg-gray-100 text-gray-900 font-sans'>";
+    html += "<div class='container mx-auto p-4 text-center'>";
+    html += "<h1 class='text-3xl font-bold text-teal-600 mb-6'>Ultrasonic Sensor</h1>";
+
+    html += "<p class='text-xl'>Distance " + String(distanceCount-1) + ": <strong>" + String(distance) + " cm</strong></p>";
+    html += "<p class='text-xl mt-2'>Buzzer Status: <strong>ON</strong></p>";  // Buzzer was ON during reading
+
+    html += "<footer class='mt-8 text-sm text-gray-600'><p>Made by <strong>Vega ❤️</strong></p></footer>";
+    html += "</div></body></html>";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+    client.stop();
+    Serial.println("Client disconnected");
+  }
+
+}
+

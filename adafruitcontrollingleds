@@ -1,0 +1,107 @@
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+// Define relay pins
+#define Relay1 D0
+#define Relay2 D2
+#define Relay3 D5
+
+// WiFi credentials
+#define WLAN_SSID     "sardar"
+#define WLAN_PASS     "12345678"
+
+// Adafruit IO setup
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883
+#define IO_USERNAME     "vbcsrj"
+#define IO_KEY          "xxxxxxxxxxxSbzxxxxvVxxx2"
+
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, IO_USERNAME, IO_KEY);
+
+// MQTT Feeds
+Adafruit_MQTT_Subscribe Light1 = Adafruit_MQTT_Subscribe(&mqtt, IO_USERNAME "/feeds/Relay1");
+Adafruit_MQTT_Subscribe Light2 = Adafruit_MQTT_Subscribe(&mqtt, IO_USERNAME "/feeds/Relay2");
+Adafruit_MQTT_Subscribe Light3 = Adafruit_MQTT_Subscribe(&mqtt, IO_USERNAME "/feeds/Relay3");
+
+void MQTT_connect();
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set relay pins as output
+  pinMode(Relay1, OUTPUT);
+  pinMode(Relay2, OUTPUT);
+  pinMode(Relay3, OUTPUT);
+
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WLAN_SSID);
+
+  // Connect to WiFi
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Subscribe to MQTT feeds
+  mqtt.subscribe(&Light1);
+  mqtt.subscribe(&Light2);
+  mqtt.subscribe(&Light3);
+}
+
+void loop() {
+  MQTT_connect();
+
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(20000))) {
+    if (subscription == &Light1) {
+      Serial.print(F("Got Relay1: "));
+      Serial.println((char *)Light1.lastread);
+      int state = atoi((char *)Light1.lastread);
+      digitalWrite(Relay1, state);
+    }
+
+    if (subscription == &Light2) {
+      Serial.print(F("Got Relay2: "));
+      Serial.println((char *)Light2.lastread);
+      int state = atoi((char *)Light2.lastread);
+      digitalWrite(Relay2, state);
+    }
+
+    if (subscription == &Light3) {
+      Serial.print(F("Got Relay3: "));
+      Serial.println((char *)Light3.lastread);
+      int state = atoi((char *)Light3.lastread);
+      digitalWrite(Relay3, state);
+    }
+  }
+}
+
+void MQTT_connect() {
+  int8_t ret;
+
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) {
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);
+    if (--retries == 0) {
+      while (1); // Wait for WDT reset
+    }
+  }
+  Serial.println("MQTT Connected!");
+}
+

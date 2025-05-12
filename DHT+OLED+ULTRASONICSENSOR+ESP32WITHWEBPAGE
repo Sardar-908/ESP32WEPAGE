@@ -1,0 +1,152 @@
+#include <WiFi.h>
+#include <DHT.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// DHT11 setup
+#define DHTPIN 12
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// Ultrasonic Sensor
+#define TRIG_PIN 14
+#define ECHO_PIN 27
+
+// OLED display setup
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// WiFi credentials
+const char* ssid = "sardar";
+const char* password = "12345678";
+
+WiFiServer server(80);
+
+// Function to read ultrasonic distance
+long readDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  return duration * 0.034 / 2;
+}
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // OLED init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found");
+    while (true);
+  }
+  display.clearDisplay();
+  display.display();
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Connecting...");
+  display.display();
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("WiFi OK");
+  display.setTextSize(1);
+  display.setCursor(0, 32);
+  display.println(WiFi.localIP());
+  display.display();
+
+  server.begin();
+}
+
+void loop() {
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  long distance = readDistanceCM();
+
+  // Display on OLED
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setCursor(0, 0);
+  if (isnan(temperature) || isnan(humidity)) {
+    display.println("Sensor Err");
+  } else {
+    display.print(temperature, 1);
+    display.println("C");
+
+    display.setCursor(0, 20);
+    display.print(humidity, 0);
+    display.println("%");
+
+    display.setCursor(0, 40);
+    display.print(distance);
+    display.println("cm");
+  }
+  display.display();
+
+  // Serve HTML page
+  WiFiClient client = server.available();
+  if (client) {
+    Serial.println("New Client.");
+    String request = client.readStringUntil('\r');
+    client.flush();
+
+    String html = R"rawliteral(
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <title>ESP32 Sensor Dashboard</title>
+      </head>
+      <body class="bg-gray-900 text-white font-sans">
+        <div class="max-w-md mx-auto mt-10 p-6 rounded-xl bg-gray-800 shadow-lg text-center">
+          <h1 class="text-3xl font-bold text-blue-400 mb-4">ESP32 Dashboard</h1>
+          <div class="space-y-4">
+    )rawliteral";
+
+    if (isnan(temperature) || isnan(humidity)) {
+      html += "<p class='text-red-400 text-xl'>Sensor Error</p>";
+    } else {
+      html += "<p class='text-lg'><span class='text-yellow-300 font-semibold'>Temperature:</span> " + String(temperature) + " &deg;C</p>";
+      html += "<p class='text-lg'><span class='text-green-300 font-semibold'>Humidity:</span> " + String(humidity) + " %</p>";
+    }
+
+    html += "<p class='text-lg'><span class='text-purple-300 font-semibold'>Distance:</span> " + String(distance) + " cm</p>";
+    html += R"rawliteral(
+          </div>
+        </div>
+      </body>
+      </html>
+    )rawliteral";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+
+    delay(10);
+    client.stop();
+    Serial.println("Client disconnected.");
+  }
+
+  delay(2000);
+}

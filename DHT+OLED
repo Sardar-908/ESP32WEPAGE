@@ -1,0 +1,112 @@
+#include <WiFi.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// DHT setup
+#define DHTPIN 4
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// OLED setup
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// WiFi credentials
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  // OLED init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found");
+    while (true);
+  }
+  display.clearDisplay();
+  display.display();
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.println("Connecting WiFi...");
+  display.display();
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("WiFi connected!");
+  display.print("IP: ");
+  display.println(WiFi.localIP());
+  display.display();
+  delay(2000);
+
+  server.begin();
+}
+
+void loop() {
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+  // Show on OLED
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  if (isnan(temperature) || isnan(humidity)) {
+    display.println("Sensor Error");
+  } else {
+    display.print("Temp: ");
+    display.print(temperature);
+    display.println(" C");
+    display.print("Hum: ");
+    display.print(humidity);
+    display.println(" %");
+  }
+  display.display();
+
+  // Handle web server
+  WiFiClient client = server.available();
+  if (client) {
+    Serial.println("New Client.");
+    String req = client.readStringUntil('\r');
+    client.flush();
+
+    String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+    html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+    html += "<title>ESP32 Weather</title></head><body>";
+    html += "<h1>ESP32 Weather Station</h1>";
+
+    if (isnan(temperature) || isnan(humidity)) {
+      html += "<p>Sensor Error</p>";
+    } else {
+      html += "<p>Temperature: " + String(temperature) + " C</p>";
+      html += "<p>Humidity: " + String(humidity) + " %</p>";
+    }
+
+    html += "</body></html>";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+
+    delay(10);
+    client.stop();
+    Serial.println("Client disconnected.");
+  }
+
+  delay(2000);
+}

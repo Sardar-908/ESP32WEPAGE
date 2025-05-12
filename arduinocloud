@@ -1,0 +1,79 @@
+#include <ESP8266WiFi.h>
+#include <ArduinoIoTCloud.h>
+#include <Arduino_ConnectionHandler.h>
+
+// WiFi credentials
+const char SSID[] = "sardar";
+const char PASS[] = "12345678";
+
+// IoT Cloud credentials
+const char DEVICE_LOGIN_NAME[] = "673c40cf-e30f-428d-9dd3-6a9309428be4";
+const char DEVICE_KEY[] = "3jS@d!b82VL6e?cFGfQrutS#!";
+
+// LED pin definitions
+#define SWITCH1_PIN D0
+#define SWITCH2_PIN D2
+#define SWITCH3_PIN D7
+
+// Cloud variables
+CloudSwitch switch1;
+CloudSwitch switch2;
+CloudSwitch switch3;
+
+// Callback declarations
+void onSwitch1Change();
+void onSwitch2Change();
+void onSwitch3Change();
+
+// WiFi connection setup for IoT Cloud
+WiFiConnectionHandler ArduinoIoTPreferredConnection(SSID, PASS);
+
+// Cloud variable binding
+void initProperties() {
+  ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
+  ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
+
+  ArduinoCloud.addProperty(switch1, READWRITE, ON_CHANGE, onSwitch1Change);
+  ArduinoCloud.addProperty(switch2, READWRITE, ON_CHANGE, onSwitch2Change);
+  ArduinoCloud.addProperty(switch3, READWRITE, ON_CHANGE, onSwitch3Change);
+}
+
+void setup() {
+  Serial.begin(9600);
+  delay(1500);
+
+  pinMode(SWITCH1_PIN, OUTPUT);
+  pinMode(SWITCH2_PIN, OUTPUT);
+  pinMode(SWITCH3_PIN, OUTPUT);
+
+  initProperties();
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+
+  setDebugMessageLevel(2);
+  ArduinoCloud.printDebugInfo();
+
+  Serial.println("Ready and connected to Arduino IoT Cloud...");
+}
+
+void loop() {
+  ArduinoCloud.update();
+}
+
+// Callback when switch1 changes
+void onSwitch1Change() {
+  digitalWrite(SWITCH1_PIN, switch1 ? HIGH : LOW);
+  Serial.println(switch1 ? "Switch1 (D1) turned ON from Cloud" : "Switch1 (D1) turned OFF from Cloud");
+}
+
+// Callback when switch2 changes
+void onSwitch2Change() {
+  digitalWrite(SWITCH2_PIN, switch2 ? HIGH : LOW);
+  Serial.println(switch2 ? "Switch2 (D2) turned ON from Cloud" : "Switch2 (D2) turned OFF from Cloud");
+}
+
+// Callback when switch3 changes
+void onSwitch3Change() {
+  digitalWrite(SWITCH3_PIN, switch3 ? HIGH : LOW);
+  Serial.println(switch3 ? "Switch3 (D7) turned ON from Cloud" : "Switch3 (D7) turned OFF from Cloud");
+}
+

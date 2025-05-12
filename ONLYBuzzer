@@ -1,0 +1,144 @@
+:#include <WiFi.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// WiFi credentials
+const char* ssid = "sardar";
+const char* password = "12345678";
+
+WiFiServer server(80);
+
+// Buzzer setup
+#define BUZZER_PIN 12
+
+// OLED setup
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found");
+    while (true);
+  }
+  display.clearDisplay();
+  display.display();
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to WiFi...");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("Connected to WiFi");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+
+  // Set buzzer pin mode
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW); // Ensure buzzer is off initially
+
+  // Initialize OLED with initial message
+  display.setTextSize(1);  // Initial text size for the first line
+  display.setTextColor(SSD1306_WHITE);  // White text color
+  display.setCursor(0, 0);
+  display.println("MADE BY VEGA");
+  display.display();
+}
+
+void loop() {
+  // Handle web server
+  WiFiClient client = server.available();
+  if (client) {
+    Serial.println("New Client.");
+
+    // Read the request from the client
+    String req = client.readStringUntil('\r');
+    client.flush();
+    
+    // HTML content
+    String html = "<!DOCTYPE html><html lang='en'><head>";
+    html += "<meta charset='UTF-8'>";
+    html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+    html += "<title>Buzzer Control</title>";
+    html += "<script src='https://cdn.tailwindcss.com'></script>"; // Tailwind CSS
+    html += "</head><body class='bg-gray-100 text-gray-900 font-sans'>";
+
+    html += "<div class='container mx-auto p-4'>";
+    html += "<h1 class='text-3xl font-bold text-center text-teal-600 mb-6'>Buzzer Control</h1>";
+
+    // If the client is requesting to turn on the buzzer
+    if (req.indexOf("/on") != -1) {
+      digitalWrite(BUZZER_PIN, HIGH);  // Turn buzzer on
+      html += "<p class='text-green-500 text-center'>Buzzer is <strong>ON</strong></p>";
+      
+      // Update OLED display when buzzer is ON
+      display.clearDisplay();
+      display.setCursor(0, 0);  // First line: "Vega"
+      display.setTextSize(1);  // Size 1 for "Vega"
+      display.println("MADE BY VEGA");
+      
+      display.setCursor(0, 16);  // Second line: "Buzzer Status"
+      display.setTextSize(1);  // Size 1 for "Buzzer Status"
+      display.println("Buzzer Status:");
+      
+      display.setCursor(0, 32);  // Third line: "ON"
+      display.setTextSize(2);  // Size 2 for "ON"
+      display.println("ON");
+      display.display();
+    } 
+    // If the client is requesting to turn off the buzzer
+    else if (req.indexOf("/off") != -1) {
+      digitalWrite(BUZZER_PIN, LOW);  // Turn buzzer off
+      html += "<p class='text-red-500 text-center'>Buzzer is <strong>OFF</strong></p>";
+      
+      // Update OLED display when buzzer is OFF
+      display.clearDisplay();
+      display.setCursor(0, 0);  // First line: "Vega"
+      display.setTextSize(1.5);  // Size 1 for "Vega"
+      display.println(" MADE BY VEGA");
+      
+      display.setCursor(0, 16);  // Second line: "Buzzer Status"
+      display.setTextSize(1.5);  // Size 1 for "Buzzer Status"
+      display.println("Buzzer Status:");
+      
+      display.setCursor(0, 32);  // Third line: "OFF"
+      display.setTextSize(1.5);  // Size 2 for "OFF"
+      display.println("OFF");
+      display.display();
+    }
+
+    // Buttons for turning the buzzer on and off
+    html += "<div class='flex justify-center space-x-4 mt-6'>";
+    html += "<a href='/on'><button class='bg-teal-500 text-white py-2 px-4 rounded-lg hover:bg-teal-600 focus:outline-none'>Turn ON</button></a>";
+    html += "<a href='/off'><button class='bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 focus:outline-none'>Turn OFF</button></a>";
+    html += "</div>";
+
+    // Footer with "Made by Vega"
+    html += "<footer class='mt-8 text-center text-sm text-gray-600'>";
+    html += "<p>Made by <strong>Vega</strong></p>";
+    html += "</footer>";
+
+    html += "</div></body></html>";
+
+    // Send HTTP response
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+
+    delay(10);
+    client.stop();
+    Serial.println("Client disconnected.");
+  }
+}
