@@ -1,0 +1,42 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+const char* ssid = "sardar";
+const char* password = "12345678";
+const char* channelID = "2959584";
+const char* readAPIKey = "MK7AALUL1PCAAQCY";
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = "http://api.thingspeak.com/channels/" + String(channelID) + "/feeds/last.json?api_key=" + readAPIKey;
+    http.begin(url);
+    int httpCode = http.GET();
+    if (httpCode == 200) {
+      String payload = http.getString();
+      DynamicJsonDocument doc(1024);
+      deserializeJson(doc, payload);
+      float temp = doc["field1"].as<float>();
+      float hum = doc["field2"].as<float>();
+
+      Serial.print("Temperature: ");
+      Serial.print(temp);
+      Serial.print(" °C, Humidity: ");
+      Serial.print(hum);
+      Serial.println(" %");
+    }
+    http.end();
+  }
+  delay(20000); // Poll every 20 seconds
+}
